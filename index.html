@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lens Distortion WebGL</title>
+  <style>
+	* {
+		margin: 0;
+		padding: 0;
+		box-sizing: border-box;
+	}
+	html, body {width: 100%; height: 100%;}
+	body {
+		background: url(icecream.jpg) center / cover;
+	}
+	canvas { display: block; width: 100vw; height: 100vh; display: none;}
+	.glass {
+		width: 100%;
+		height: 100%;
+		position: relative;
+		backdrop-filter: blur(15px);
+	}
+  .drops {
+	position: relative;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	.drop {
+		position: absolute;
+		width: 150px;
+		height: 150px;
+		/* box-shadow: 
+			inset 10px 10px 10px rgba(0,0,0,0.05),
+			15px 25px 10px rgba(0,0,0,0.1),
+			15px 20px 20px rgba(0,0,0,0.05),
+			inset -10px -10px 15px rgba(255,255,255,0.9); */
+			box-shadow: 
+				inset 15px 15px 15px 3px #0005, 
+				/* 15px 15px 15px -6px #fff, */
+				15px 25px 15px -5px #000a, 
+				inset -10px -10px 15px 3px #fff;
+			/* filter: drop-shadow(15px 15px 10px #000); */
+
+			&::before, &::after {
+				content: "";
+				position: absolute;
+				/* background: #fff; */
+  background: radial-gradient(#ffff 70%, #fff0);
+				border-radius: 50%;
+				filter: drop-shadow(6px 1px 3px #fffa) drop-shadow(-6px 1px 3px #fffa);
+			}
+
+			&::before {
+				top: 20px;
+				left: 20px;
+				/* background: #fff; */
+				width: 40px;
+				height: 15px;
+				transform: rotate(-30deg);
+				/* border-radius: 42% 58% 37% 63% / 40% 43% 57% 60%; */
+  /* border-radius: 23% 77% 50% 50% / 41% 50% 50% 59%; */
+  /* background: radial-gradient(#ffff 90%, #fff0); */
+  /* backdrop-filter: blur(3px); */
+  /* filter: drop-shadow(6px 1px 3px #fffa) drop-shadow(-6px 1px 3px #fffa); */
+  
+			/* box-shadow: 15px 25px 15px -5px #fff; */
+			}
+
+			&::after {
+				top: 10px;
+				left: 65px;
+				width: 10px;
+				height: 10px;
+				/* border-radius: 57% 43% 37% 63% / 48% 27% 63% 52%; */
+  /* border-radius: 74% 26% 50% 50% / 41% 50% 50% 59%; */
+				transform: rotate(-30deg) skew(-6deg, 19deg);
+			box-shadow: -10px 130px 10px 10px #fff;
+			/* z-index: -10; */
+			}
+
+			&:nth-child(1) {
+				transform: scale(1) translate(0px, 220px);
+				/* border-radius: 62% 38% 41% 59% / 46% 44% 56% 54%; */
+				border-radius: 65% 55% 45% 65% / 55% 55% 65% 65%;
+			}
+
+			&:nth-child(2) {
+				transform: scale(0.5) translate(-200px, 180px);
+				border-radius: 64% 36% 42% 58% / 42% 37% 63% 58%;
+			}
+
+			&:nth-child(3) {
+				transform: scale(0.5) translate(280px, 10px);
+				border-radius:a 49% 51% 42% 58% / 56% 47% 53% 44%;
+			}
+
+			&:nth-child(4) {
+				transform: scale(0.35) translate(120px, -350px);
+				border-radius: 39% 61% 63% 37% / 77% 47% 53% 23%;
+			}
+	}
+  }
+  </style>
+</head>
+<body>
+<canvas id="glcanvas"></canvas>
+<div class="glass">
+  <div class="drops">
+	  <div class="drop"></div>
+	  <!-- <div class="drop"></div>
+	  <div class="drop"></div>
+	  <div class="drop"></div> -->
+  </div>
+</div>
+
+<script>
+const vertexShaderSource = `
+  attribute vec2 aPosition;
+  varying vec2 vUV;
+  void main() {
+	vUV = (aPosition + 1.0) * 0.5;
+	gl_Position = vec4(aPosition, 0.0, 1.0);
+  }
+`;
+
+const fragmentShaderSource = `
+  precision mediump float;
+  uniform sampler2D uTexture;
+  uniform float distortionStrength;
+  varying vec2 vUV;
+
+  void main() {
+	vec2 center = vec2(0.5, 0.5);
+	vec2 delta = vUV - center;
+	float r = length(delta);
+	// vec2 distortedUV = center + delta * (1.0 + distortionStrength * r * r);
+	vec2 distortedUV = center + delta * (1.0 + distortionStrength * pow(r, 2.5)) - 0.5 * r;
+	gl_FragColor = texture2D(uTexture, distortedUV);
+  }
+`;
+
+function createShader(gl, type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+	console.error("Shader compile error:", gl.getShaderInfoLog(shader));
+	gl.deleteShader(shader);
+	return null;
+  }
+  return shader;
+}
+
+function createProgram(gl, vsSource, fsSource) {
+  const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+  const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+  const program = gl.createProgram();
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+	console.error("Program link error:", gl.getProgramInfoLog(program));
+	return null;
+  }
+  return program;
+}
+
+function main() {
+  const canvas = document.getElementById("glcanvas");
+  const gl = canvas.getContext("webgl");
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const program = createProgram(gl, vertexShaderSource, fragmentShaderSource);
+  gl.useProgram(program);
+
+  const positionBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+  const positions = new Float32Array([
+	-1, -1,  1, -1,  -1, 1,
+	 1, -1,  1,  1,  -1, 1
+  ]);
+  gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+  const aPosition = gl.getAttribLocation(program, "aPosition");
+  gl.enableVertexAttribArray(aPosition);
+  gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
+
+  const texture = gl.createTexture();
+  const image = new Image();
+  image.src = "image.jpg";
+  image.onload = () => {
+	gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); // 상하반전 설정
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+
+	const uTexture = gl.getUniformLocation(program, "uTexture");
+	const distortionStrength = gl.getUniformLocation(program, "distortionStrength");
+
+	gl.uniform1i(uTexture, 0);
+	gl.uniform1f(distortionStrength, -3.5); // 왜곡 강도 조절
+
+	gl.viewport(0, 0, canvas.width, canvas.height);
+	gl.clearColor(0, 0, 0, 1);
+	gl.clear(gl.COLOR_BUFFER_BIT);
+	gl.drawArrays(gl.TRIANGLES, 0, 6);
+	
+const dataURL = canvas.toDataURL("image/png");
+document.querySelectorAll(".drop").forEach(e => e.style.background = `url(${dataURL}) center / cover`)
+  };
+}
+
+main();
+
+
+</script>
+</body>
+</html>
